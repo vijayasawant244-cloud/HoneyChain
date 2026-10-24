@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 contract HoneyBatch {
+    enum Role { None, Beekeeper, Processor, Distributor }
+
     struct Batch {
         string batchId;
         string beekeeper;
@@ -19,11 +21,13 @@ contract HoneyBatch {
 
     mapping(string => Batch) public batches;
     mapping(string => HealthRecord) public healthRecords;
+    mapping(address => Role) public roles;
     string[] public batchIds;
 
     address public owner;
 
     event HealthRecorded(string batchId, string condition, uint256 confidencePct, uint256 estDailyGainGrams);
+    event RoleAssigned(address indexed user, Role role);
 
     constructor() {
         owner = msg.sender;
@@ -34,12 +38,23 @@ contract HoneyBatch {
         _;
     }
 
+    modifier onlyRole(Role _role) {
+        require(roles[msg.sender] == _role, "Caller does not have the required role");
+        _;
+    }
+
+    function assignRole(address _user, Role _role) public onlyOwner {
+        require(_user != address(0), "Invalid address");
+        roles[_user] = _role;
+        emit RoleAssigned(_user, _role);
+    }
+
     function createBatch(
         string memory _batchId,
         string memory _beekeeper,
         uint256 _harvestDate,
         uint256 _quantity
-    ) public {
+    ) public onlyRole(Role.Beekeeper) {
         require(bytes(batches[_batchId].batchId).length == 0, "Batch ID already exists");
         batches[_batchId] = Batch(_batchId, _beekeeper, _harvestDate, _quantity, "Harvested");
         batchIds.push(_batchId);
@@ -54,6 +69,20 @@ contract HoneyBatch {
 
     function updateStatus(string memory _batchId, string memory _newStatus) public {
         require(bytes(batches[_batchId].batchId).length != 0, "Batch does not exist");
+
+        bytes32 current = keccak256(abi.encodePacked(batches[_batchId].status));
+        bytes32 next = keccak256(abi.encodePacked(_newStatus));
+
+        if (next == keccak256(abi.encodePacked("Tested"))) {
+            require(roles[msg.sender] == Role.Processor, "Only Processor can mark Tested");
+            require(current == keccak256(abi.encodePacked("Harvested")), "Batch must be Harvested first");
+        } else if (next == keccak256(abi.encodePacked("Shipped"))) {
+            require(roles[msg.sender] == Role.Distributor, "Only Distributor can mark Shipped");
+            require(current == keccak256(abi.encodePacked("Tested")), "Batch must be Tested first");
+        } else {
+            revert("Invalid status");
+        }
+
         batches[_batchId].status = _newStatus;
     }
 
