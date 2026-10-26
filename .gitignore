@@ -1,4 +1,5 @@
 .env
+jar-codes-*.csv
 node_modules/
 __pycache__/
 *.joblib

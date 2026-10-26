@@ -28,10 +28,21 @@ contract HoneyBatch {
         uint256 recordedAt;
     }
 
+    struct Jar {
+        string batchId;
+        bool registered;
+        bool claimed;
+        uint256 claimedAt;
+    }
+
     mapping(string => Batch) public batches;
     mapping(string => HealthRecord) public healthRecords;
     mapping(string => LabReport) public labReports;
     mapping(address => Role) public roles;
+    mapping(string => address) public batchCreator;
+    mapping(bytes32 => Jar) private jars;
+    mapping(string => uint256) public jarCount;
+    mapping(string => uint256) public claimedCount;
     string[] public batchIds;
 
     address public owner;
@@ -39,6 +50,8 @@ contract HoneyBatch {
     event HealthRecorded(string batchId, string condition, uint256 confidencePct, uint256 estDailyGainGrams);
     event RoleAssigned(address indexed user, Role role);
     event LabReportRecorded(string batchId, address indexed lab, bytes32 reportHash, bool passed);
+    event JarsRegistered(string batchId, uint256 count);
+    event JarClaimed(string batchId, bytes32 codeHash, uint256 claimedAt);
 
     constructor() {
         owner = msg.sender;
@@ -71,6 +84,7 @@ contract HoneyBatch {
         require(bytes(_batchId).length != 0, "Batch ID required");
         require(bytes(batches[_batchId].batchId).length == 0, "Batch ID already exists");
         batches[_batchId] = Batch(_batchId, _beekeeper, _hiveId, _location, _harvestDate, _quantity, "Harvested");
+        batchCreator[_batchId] = msg.sender;
         batchIds.push(_batchId);
     }
 
@@ -141,5 +155,36 @@ contract HoneyBatch {
     ) {
         HealthRecord memory h = healthRecords[_batchId];
         return (h.condition, h.confidencePct, h.estDailyGainGrams, h.recordedAt);
+    }
+
+    function registerJars(string memory _batchId, bytes32[] memory _codeHashes) public onlyRole(Role.Beekeeper) {
+        require(bytes(batches[_batchId].batchId).length != 0, "Batch does not exist");
+        require(batchCreator[_batchId] == msg.sender, "Only the batch creator can do this");
+        require(_codeHashes.length > 0, "No codes given");
+        require(_codeHashes.length <= 100, "Too many codes at once");
+        for (uint256 i = 0; i < _codeHashes.length; i++) {
+            require(!jars[_codeHashes[i]].registered, "Code already registered");
+            jars[_codeHashes[i]] = Jar(_batchId, true, false, 0);
+        }
+        jarCount[_batchId] += _codeHashes.length;
+        emit JarsRegistered(_batchId, _codeHashes.length);
+    }
+
+    function claimJar(string memory _secret) public {
+        bytes32 h = keccak256(abi.encodePacked(_secret));
+        Jar storage j = jars[h];
+        require(j.registered, "Unknown code");
+        require(!j.claimed, "Code already used");
+        j.claimed = true;
+        j.claimedAt = block.timestamp;
+        claimedCount[j.batchId] += 1;
+        emit JarClaimed(j.batchId, h, block.timestamp);
+    }
+
+    function getJarStatus(string memory _secret) public view returns (
+        bool, bool, uint256, string memory
+    ) {
+        Jar memory j = jars[keccak256(abi.encodePacked(_secret))];
+        return (j.registered, j.claimed, j.claimedAt, j.batchId);
     }
 }
