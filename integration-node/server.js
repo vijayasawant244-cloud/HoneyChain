@@ -5,6 +5,7 @@ const { provider, contract } = require("./common");
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://127.0.0.1:8000";
 const app = express();
 app.use(express.urlencoded({ extended: false }));
+app.use("/gateway", require("./gateway"));
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));   // contract text is untrusted
