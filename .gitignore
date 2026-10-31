@@ -6,3 +6,6 @@ __pycache__/
 blockchain/artifacts/
 blockchain/cache/
 blockchain/types/
+ai/knowledge_base/*.json
+ai/knowledge_base/*.pdf
+ai/knowledge_base/*.txt
